@@ -22,12 +22,10 @@ tv = tfp.util.TransformedVariable
 tfk = tfp.math.psd_kernels
 
 dtp = "float32"
-rng = np.random.default_rng()
-
 class SpatialFactorization(tf.Module):
   def __init__(self, J, L, Z, lik="poi", psd_kernel=tfk.MaternThreeHalves,
                nugget=1e-5, length_scale=0.1, disp="default",
-               nonneg=False, isotropic=True, feature_means=None, **kwargs):
+               nonneg=False, isotropic=True, feature_means=None, random_state=0, **kwargs):
     """
     Non-negative process factorization
 
@@ -56,6 +54,10 @@ class SpatialFactorization(tf.Module):
     """
     super().__init__(**kwargs)
     # self.is_spatial=True
+
+    self.rng = np.random.default_rng(random_state)
+    self.tf_rng = tf.random.Generator.from_seed(random_state)
+
     self.lik = lik
     self.isotropic=isotropic
     M,D = Z.shape
@@ -63,7 +65,7 @@ class SpatialFactorization(tf.Module):
     self.nonneg = tf.Variable(nonneg, trainable=False, name="is_non_negative")
     #variational parameters
     with tf.name_scope("variational"):
-      self.delta = tf.Variable(rng.normal(size=(L,M)), dtype=dtp, name="mean") #LxM
+      self.delta = tf.Variable(self.rng.normal(size=(L,M)), dtype=dtp, name="mean") #LxM
       _Omega_tril = self._init_Omega_tril(L,M,nugget=nugget)
       # _Omega_tril = .01*tf.eye(M,batch_shape=[L],dtype=dtp)
       self.Omega_tril=tv(_Omega_tril, tfb.FillScaleTriL(), dtype=dtp, name="covar_tril") #LxMxM
@@ -88,10 +90,10 @@ class SpatialFactorization(tf.Module):
                              tfb.Softplus(), dtype=dtp, name="scale_diag")
     #Loadings weights
     if self.nonneg:
-      self.W = tf.Variable(rng.exponential(size=(J,L)), dtype=dtp,
+      self.W = tf.Variable(self.rng.exponential(size=(J,L)), dtype=dtp,
                            constraint=misc.make_nonneg, name="loadings") #JxL
     else:
-      self.W = tf.Variable(rng.normal(size=(J,L)), dtype=dtp, name="loadings") #JxL
+      self.W = tf.Variable(self.rng.normal(size=(J,L)), dtype=dtp, name="loadings") #JxL
     self.psd_kernel = psd_kernel #this is a class, not yet an object
     #likelihood parameters, set defaults
     self._disp0 = disp
@@ -102,8 +104,7 @@ class SpatialFactorization(tf.Module):
     else:
       self.feature_means = None
 
-  @staticmethod
-  def _init_Omega_tril(L, M, nugget=None):
+  def _init_Omega_tril(self, L, M, nugget=None):
     """
     convenience function for initializing the batch of lower triangular
     cholesky factors of the variational covariance matrices.
@@ -112,7 +113,7 @@ class SpatialFactorization(tf.Module):
     """
     #note most of these operations are in float64 by default
     #the 0.01 below is to make the elbo more numerically stable at initialization
-    Omega_sqt = 0.01*rng.normal(size=(L,M,M)) #LxMxM
+    Omega_sqt = 0.01*self.rng.normal(size=(L,M,M)) #LxMxM
     Omega = [Omega_sqt[l,:,:]@ Omega_sqt[l,:,:].T for l in range(L)] #list len L, elements MxM
     # Omega += nugget*np.eye(M)
     res = np.stack([np.linalg.cholesky(Omega[l]) for l in range(L)], axis=0)
@@ -230,7 +231,7 @@ class SpatialFactorization(tf.Module):
     a_t_Omega_tril = tfl.matmul(alpha_x, self.Omega_tril, transpose_a=True) #LxNxM
     aOmega_a = tf.reduce_sum(tf.square(a_t_Omega_tril), axis=2) #LxN
     Sigma_tilde = Kff_diag - aKa + aOmega_a #LxN
-    eps = tf.random.normal((S,L,N)) #note this is not the same random generator as self.rng!
+    eps = self.tf_rng.normal((S,L,N)) #note this is not the same random generator as self.rng!
     return mu_tilde + tf.math.sqrt(Sigma_tilde)*eps #"F", dims: SxLxN
 
   def sample_predictive_mean(self, X, sz=1, S=1, kernel=None, mu_z=None, Kuu_chol=None, chol=True):
