@@ -19,8 +19,9 @@ dependencies = [
     "scikit-learn>=0.24",
     "setuptools>=42",
     "squidpy>=1.1",
-    "tensorflow>=2.17",
+    "tensorflow>=2.14",
     "tensorflow_probability>=0.13",
+    "janitor",
     "tf_keras",
 ]
 
@@ -45,6 +46,16 @@ classifiers = [
 "Homepage" = "https://github.com/willtownes/spatial-factorization-py"
 "Bug Tracker" = "https://github.com/willtownes/spatial-factorization-py/issues"
 
+[project.scripts]
+spatial-factorization-mlflow = "spatial_factorization.mlflow.train:main"
+spatial-factorization-grid-search= "spatial_factorization.mlflow.grid_search:run"
+
+[project.optional-dependencies]
+mlflow = [
+  "mlflow>=2.5.0",
+  "toml>=0.10.2"
+]
+
 [tool]
 
 [tool.hatch.version]
@@ -54,12 +65,14 @@ path = "spatial_factorization/__about__.py"
 include = [
   "spatial_factorization/*.py",
   "spatial_factorization/utils/*.py",
+  "spatial_factorization/mlflow/*.py",
 ]
 
 [tool.hatch.build.targets.wheel]
 include = [
   "spatial_factorization/*.py",
   "spatial_factorization/utils/*.py",
+  "spatial_factorization/mlflow/*.py",
 ]
 
 [tool.pytest.ini_options]
